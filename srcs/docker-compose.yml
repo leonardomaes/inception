@@ -1,0 +1,63 @@
+services:
+  nginx:
+    image: inception-nginx
+    container_name: nginx
+    build:
+      context: ./requirements/nginx/
+    ports:
+      - "443:443"
+    volumes:
+      - wp_files:/var/www/inception
+    depends_on:
+      - wordpress
+    networks:
+      - inception
+    restart: on-failure
+
+
+  wordpress:
+    build: ./requirements/wordpress/
+    secrets:
+      - db_password
+    image: inception-wordpress
+    container_name: wordpress
+    volumes:
+      - wp_files:/var/www/inception
+    networks:
+      - inception
+    env_file:
+      - .env
+    depends_on:
+      - mariadb
+    restart: on-failure
+
+
+  mariadb:
+    image: inception-mariadb
+    container_name: mariadb
+    build:
+      context: ./requirements/mariadb/
+    secrets:
+      - db_password
+      - db_root_password
+    volumes:
+      - wp_db:/var/lib/mysql
+    networks:
+      - inception
+    restart: on-failure
+    env_file:
+      - .env
+
+networks:
+  inception:
+    driver: bridge
+
+volumes:
+  wp_files:
+  wp_db:
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  db_root_password:
+    file: ./secrets/db_root_password.txt
