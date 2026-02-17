@@ -31,7 +31,7 @@ clean:
 
 fclean: clean
 	@docker system prune -af
-#	@sudo rm -rf /home/${USER}/data
+	@sudo rm -rf /home/${USER}/data
 
 re: fclean all
 

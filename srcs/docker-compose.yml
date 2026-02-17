@@ -19,6 +19,7 @@ services:
     build: ./requirements/wordpress/
     secrets:
       - db_password
+      - wp_admin_password
     image: inception-wordpress
     container_name: wordpress
     volumes:
@@ -54,10 +55,23 @@ networks:
 
 volumes:
   wp_files:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/lmaes/data/wp_files
+
   wp_db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/lmaes/data/wp_db
 
 secrets:
   db_password:
     file: ./secrets/db_password.txt
   db_root_password:
     file: ./secrets/db_root_password.txt
+  wp_admin_password:
+    file: ./secrets/wp_admin_password.txt

@@ -1,7 +1,10 @@
 #!/bin/bash
 set -e
 
+cd /var/www/inception
+
 DB_PASSWORD=$(cat /run/secrets/db_password)
+WP_ADMIN_PASSWORD=$(cat /run/secrets/wp_admin_password)
 
 # Espera MariaDB ficar disponível
 until mysqladmin ping -h"$DB_HOST" -u"$DB_USER" --password="$DB_PASSWORD" --silent; do
@@ -9,20 +12,32 @@ until mysqladmin ping -h"$DB_HOST" -u"$DB_USER" --password="$DB_PASSWORD" --sile
 done
 
 # Instala WordPress apenas se não existir
-if [ ! -f /var/www/inception/wp-config.php ]; then
-	echo "Installing WordPress..."
+if [ ! -f wp-config.php ]; then
 
-	wget https://wordpress.org/latest.tar.gz
-	tar -xzf latest.tar.gz
-	cp -r wordpress/* .
-	rm -rf wordpress latest.tar.gz
+	wp core download --allow-root
 
-	cp wp-config-sample.php wp-config.php
+	wp config create \
+		--dbname="$DB_NAME" \
+		--dbuser="$DB_USER" \
+		--dbpass="$DB_PASSWORD" \
+		--dbhost="$DB_HOST" \
+		--allow-root
 
-	sed -i "s/database_name_here/${DB_NAME}/" wp-config.php
-	sed -i "s/username_here/${DB_USER}/" wp-config.php
-	sed -i "s/password_here/${DB_PASSWORD}/" wp-config.php
-	sed -i "s/localhost/${DB_HOST}/" wp-config.php
+	wp core install \
+		--url="https://${DOMAIN_NAME}" \
+		--title="$WP_TITLE" \
+		--admin_user="$WP_ADMIN_USER" \
+		--admin_password="$WP_ADMIN_PASSWORD" \
+		--admin_email="$WP_ADMIN_EMAIL" \
+		--skip-email \
+		--allow-root
+
+	wp user create \
+		"$WP_USER" \
+		"$WP_USER_EMAIL" \
+		--user_pass="$(openssl rand -base64 12)" \
+		--role=author \
+		--allow-root
 
 	chown -R www-data:www-data /var/www/inception
 fi
