@@ -102,49 +102,6 @@ make logs              # All services
 
 ---
 
-## Backup and Restore
-
-### Create Backup
-```bash
-# Stop services
-make stop
-
-# Create backup with timestamp
-BACKUP="inception_backup_$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$BACKUP"
-cp -r ~/data/mariadb "$BACKUP/"
-cp -r ~/data/wordpress "$BACKUP/"
-tar -czf "${BACKUP}.tar.gz" "$BACKUP"
-rm -rf "$BACKUP"
-
-# Restart services
-make start
-```
-
-### Restore from Backup
-```bash
-# Stop services
-make down
-
-# Remove current data
-rm -rf ~/data/mariadb/* ~/data/wordpress/*
-
-# Extract backup
-tar -xzf inception_backup_*.tar.gz
-
-# Restore
-cp -r inception_backup_*/mariadb/* ~/data/mariadb/
-cp -r inception_backup_*/wordpress/* ~/data/wordpress/
-
-# Fix permissions
-sudo chown -R $USER:$USER ~/data
-
-# Start services
-make up
-```
-
----
-
 ## Common Commands
 
 ```bash

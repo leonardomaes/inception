@@ -18,5 +18,8 @@ RUN rm -f /etc/nginx/sites-enabled/default
 
 # Copy nginx config
 COPY conf/default.conf /etc/nginx/conf.d/default.conf
+COPY tools/nginx.sh /nginx.sh
 
-CMD [ "nginx", "-g","daemon off;" ]
+RUN chmod +x /nginx.sh
+
+CMD [ "/nginx.sh" ]
