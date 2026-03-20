@@ -1,205 +1,251 @@
-# Developer Documentation - Inception
+# DEV_DOC.md — Developer Documentation
 
-Quick reference guide for building the Inception project.
+## Overview
+
+This document explains how a developer can set up, build, and manage the **Inception** project from scratch. The project consists of a small infrastructure composed of Docker containers running NGINX, WordPress + PHP-FPM, and MariaDB, orchestrated via Docker Compose inside a Virtual Machine.
 
 ---
 
-## Prerequisites & Setup
+## Prerequisites
 
-### Required Software
-```bash
-sudo apt update && sudo apt install -y docker.io docker-compose make
-sudo usermod -aG docker $USER && newgrp docker
+Before getting started, make sure the following are available on your system:
+
+- A **Virtual Machine** running a recent version of **Debian** or **Alpine Linux** (penultimate stable version recommended)
+- **Docker** and **Docker Compose** installed
+- **Make** installed
+- **Git** installed
+- Access to the root or a user with `sudo` privileges
+
+---
+
+## Project Structure
+
+The repository must follow this directory layout:
+
 ```
-
-### Project Structure
-```bash
-inception/
+.
 ├── Makefile
 ├── secrets/
-│   ├── db_root_password.txt
-│   └── db_password.txt
+│   ├── credentials.txt
+│   ├── db_password.txt
+│   └── db_root_password.txt
 └── srcs/
-    ├── .env
     ├── docker-compose.yml
+    ├── .env
     └── requirements/
         ├── mariadb/
+        │   ├── Dockerfile
+        │   ├── .dockerignore
+        │   ├── conf/
+        │   └── tools/
+        ├── nginx/
+        │   ├── Dockerfile
+        │   ├── .dockerignore
+        │   ├── conf/
+        │   └── tools/
         ├── wordpress/
-        └── nginx/
+        │   ├── Dockerfile
+        │   ├── .dockerignore
+        │   ├── conf/
+        │   └── tools/
+        └── bonus/
 ```
 
-Create structure:
-```bash
-mkdir -p inception/srcs/requirements/{mariadb,nginx,wordpress}/{conf,tools}
-mkdir -p inception/secrets ~/data/{mariadb,wordpress}
-```
+> **Note:** Each service has its own `Dockerfile`. You may not use pre-built images from DockerHub (except for the base Alpine/Debian images).
 
 ---
 
 ## Configuration Files
 
-### Environment Variables (`srcs/.env`)
+### `.env` file
 
-| Variable | Example Value | Purpose |
-|----------|--------------|---------|
-| `DOMAIN_NAME` | `example.42.fr` | Website domain |
-| `MYSQL_DATABASE` | `wordpress` | Database name |
-| `MYSQL_USER` | `wp_user` | Database user |
-| `WP_ADMIN_USER` | `wpadmin` | WordPress admin (no "admin"!) |
-| `WP_ADMIN_EMAIL` | `admin@example.com` | Admin email |
-| `WP_USER` | `wpuser` | Regular user |
-| `WP_USER_EMAIL` | `user@example.com` | User email |
+Located at `srcs/.env`, this file holds non-sensitive environment variables:
 
-### Secrets
+```env
+DOMAIN_NAME=login.42.fr
 
-| File | Content |
-|------|---------|
-| `secrets/db_root_password.txt` | MariaDB root password |
-| `secrets/db_password.txt` | WordPress database password |
+# MySQL / MariaDB
+MYSQL_USER=your_db_user
+MYSQL_DATABASE=wordpress
 
-**Important:** `chmod 600 secrets/*.txt`
-
-### Domain Configuration
-```bash
-echo "127.0.0.1   example.42.fr" | sudo tee -a /etc/hosts
+# WordPress
+WORDPRESS_TITLE=My WordPress Site
+WORDPRESS_ADMIN_USER=your_wp_admin      # Must NOT contain "admin" or "administrator"
+WORDPRESS_ADMIN_EMAIL=admin@example.com
+WORDPRESS_USER=second_user
+WORDPRESS_USER_EMAIL=user@example.com
 ```
 
----
+> **Important:** Passwords must **not** be stored in `.env`. Use Docker secrets instead.
 
-## Service Architecture
+### `secrets/` directory
+
+Store sensitive data as plain text files in the `secrets/` folder:
+
+- `credentials.txt` — WordPress admin credentials
+- `db_password.txt` — MariaDB user password
+- `db_root_password.txt` — MariaDB root password
+
+These files must be listed in `.gitignore` and never committed to the repository.
+
+### Domain configuration
+
+Add the following line to `/etc/hosts` on the host machine to resolve the domain locally:
 
 ```
-Internet → NGINX:443 → WordPress:9000 → MariaDB:3306
-              ↓              ↓              ↓
-          Port 443      wp_files       db_files
-                    ~/data/wordpress  ~/data/mariadb
+127.0.0.1   login.42.fr
 ```
 
-| Service | Base Image | Port | Volume | Purpose |
-|---------|-----------|------|--------|---------|
-| **MariaDB** | debian:bookworm | 3306 | `/var/lib/mysql` | Database |
-| **WordPress** | debian:bookworm | 9000 | `/var/www/html` | PHP-FPM |
-| **NGINX** | debian:bookworm | 443 | `/var/www/html` | Web server |
+Replace `login` with your actual 42 login.
 
 ---
 
-## Key Configuration Details
+## Building and Launching the Project
 
-### MariaDB (`requirements/mariadb/`)
+All build and run operations are managed via the `Makefile` at the project root.
 
-**Dockerfile:** Install MariaDB, copy config and setup script, expose port 3306
+### Build and start all containers
 
-**conf/my.cnf:**
-- `bind-address = 0.0.0.0`
-- `port = 3306`
-- `skip-networking = 0`
-
-**tools/setup.sh:**
-- Read secrets from `/run/secrets/`
-- Initialize database if not exists
-- Create database and user
-- Grant privileges
-
-### WordPress (`requirements/wordpress/`)
-
-**Dockerfile:** Install PHP 7.4-FPM, WP-CLI, configure to listen on port 9000
-
-**conf/www.conf:**
-- `listen = 9000`
-- `pm = dynamic`
-- Process manager settings
-
-**tools/setup.sh:**
-- Wait for MariaDB
-- Download WordPress with WP-CLI
-- Create `wp-config.php`
-- Install WordPress
-- Create two users (admin + regular)
-
-### NGINX (`requirements/nginx/`)
-
-**Dockerfile:** Install NGINX, generate self-signed SSL certificate
-
-**conf/nginx.conf:**
-- `ssl_protocols TLSv1.2 TLSv1.3`
-- `listen 443 ssl`
-- FastCGI pass to `wordpress:9000`
-- Root: `/var/www/html`
-
----
-
-## Docker Compose Structure
-
-**Key sections in `srcs/docker-compose.yml`:**
-
-| Section | Configuration |
-|---------|--------------|
-| **Services** | mariadb, wordpress, nginx with build contexts |
-| **Dependencies** | wordpress depends on mariadb, nginx depends on wordpress |
-| **Volumes** | Named volumes with bind mounts to `~/data/` |
-| **Networks** | Custom bridge network `inception` |
-| **Secrets** | Files from `../secrets/*.txt` |
-| **Restart Policy** | `on-failure` for all services |
-
----
-
-## Makefile Commands
-
-| Command | Action |
-|---------|--------|
-| `make` / `make all` | Build and start all services |
-| `make down` | Stop and remove containers |
-| `make clean` | Remove containers and volumes |
-| `make fclean` | Full cleanup (images, networks, data) |
-| `make re` | Rebuild from scratch |
-| `make logs` | Follow logs from all services |
-
----
-
-## Build & Verification
-
-### Build Process
 ```bash
 make
 ```
 
-### Verification Steps
+This command triggers `docker compose` to build the Docker images from their respective `Dockerfile`s and start the containers.
 
-| Check | Command | Expected Result |
-|-------|---------|----------------|
-| Containers running | `docker ps` | 3 containers: mariadb, wordpress, nginx |
-| Database ready | `docker exec mariadb mysqladmin ping` | "mysqld is alive" |
-| WordPress installed | `docker exec wordpress wp core is-installed --allow-root` | No output (success) |
-| NGINX config valid | `docker exec nginx nginx -t` | "syntax is ok" |
-| Website accessible | `curl -k https://localhost` | HTML content |
-| Network connectivity | `docker exec wordpress ping -c 2 mariadb` | Successful pings |
+### Stop all containers
 
-### Access Website
-- URL: `https://example.42.fr`
-- Accept SSL warning (self-signed certificate)
-- Login: `/wp-admin` with credentials from `.env`
+```bash
+make down
+```
 
----
+### Clean all containers, images, volumes, and data
 
-## Useful Commands
+```bash
+make fclean
+```
 
-### Debugging
-- **View logs:** `docker logs -f nginx`
-- **Enter container:** `docker exec -it mariadb bash`
-- **Test connectivity:** `docker exec wordpress ping mariadb`
-- **Check processes:** `docker ps`
+> **Warning:** This will delete all persistent data stored in the Docker volumes.
+
+### Rebuild from scratch
+
+```bash
+make re
+```
 
 ---
 
-## Security Checklist
+## Docker Compose Overview
 
-- [ ] Secrets not committed (add to `.gitignore`)
-- [ ] `.env` not committed
-- [ ] Only port 443 exposed to host
-- [ ] TLS 1.2/1.3 only
-- [ ] Admin username doesn't contain "admin"
-- [ ] Strong random passwords in secrets
-- [ ] Services on internal network
-- [ ] MariaDB not accessible externally
+The `srcs/docker-compose.yml` file defines the following services:
+
+| Service     | Description                                   | Port  |
+|-------------|-----------------------------------------------|-------|
+| `nginx`     | NGINX with TLSv1.2/TLSv1.3, entry point      | 443   |
+| `wordpress` | WordPress + PHP-FPM (no NGINX)                | 9000  |
+| `mariadb`   | MariaDB database (no NGINX)                   | 3306  |
+
+All services share a custom **Docker network** defined in the compose file. `network: host` and `--link` are strictly forbidden.
+
+### Named Volumes
+
+Two Docker named volumes are used for data persistence:
+
+- `db_volume` → stores the MariaDB database
+- `wordpress_volume` → stores WordPress website files
+
+Both volumes are mapped to `/home/login/data/` on the host machine (replace `login` with your username).
+
+> **Bind mounts are not allowed** for these volumes.
 
 ---
+
+## Container Management Commands
+
+### View running containers
+
+```bash
+docker ps
+```
+
+### View logs for a specific container
+
+```bash
+docker logs <container_name>
+```
+
+### Open a shell inside a container
+
+```bash
+docker exec -it <container_name> sh
+```
+
+### Inspect a volume
+
+```bash
+docker volume inspect <volume_name>
+```
+
+### List all volumes
+
+```bash
+docker volume ls
+```
+
+---
+
+## Data Persistence
+
+All persistent data lives in Docker named volumes, physically stored on the host at:
+
+```
+/home/login/data/
+├── db/          ← MariaDB data files
+└── wordpress/   ← WordPress files
+```
+
+This data survives container restarts and `docker compose down`. It is only removed when volumes are explicitly deleted (e.g., `docker volume rm` or `make fclean`).
+
+---
+
+## Security Rules
+
+- **No passwords in Dockerfiles** — always use environment variables or Docker secrets.
+- **No `latest` tag** — always pin a specific image version.
+- **No infinite loop commands** as entrypoints (e.g., `tail -f`, `sleep infinity`, `while true`).
+- **NGINX is the sole entry point** — only port `443` is exposed externally, using TLSv1.2 or TLSv1.3.
+- **Credentials must not appear in the Git repository** — use `.gitignore` to exclude `secrets/` and `.env` if it contains sensitive values.
+
+---
+
+## WordPress Database Setup
+
+The MariaDB container must be initialized with:
+
+- A **database** for WordPress
+- A **regular user** with access to the WordPress database
+- An **administrator user** whose username does **not** contain `admin`, `Admin`, `administrator`, or `Administrator`
+
+These are configured via Docker secrets and environment variables read at container startup by the entrypoint script.
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|---|---|
+| Containers exit immediately | Check entrypoint script; avoid infinite loop patterns |
+| Cannot access `https://login.42.fr` | Verify `/etc/hosts` entry and that NGINX is running on port 443 |
+| Database connection errors | Ensure MariaDB is fully initialized before WordPress starts; use `depends_on` with health checks |
+| Volume data not persisting | Check that named volumes (not bind mounts) are defined in `docker-compose.yml` |
+| TLS errors in browser | Self-signed certificate is expected; accept the browser security warning |
+
+---
+
+## Useful References
+
+- [Docker Documentation](https://docs.docker.com/)
+- [Docker Compose Reference](https://docs.docker.com/compose/compose-file/)
+- [NGINX Configuration Guide](https://nginx.org/en/docs/)
+- [WordPress CLI (WP-CLI)](https://wp-cli.org/)
+- [MariaDB Docker Setup](https://mariadb.com/kb/en/installing-and-using-mariadb-via-docker/)
+- [PID 1 and Docker best practices](https://cloud.google.com/architecture/best-practices-for-building-containers)
