@@ -21,10 +21,8 @@ RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli
 
 WORKDIR /var/www/inception
 
-# Copia pool customizado
 COPY conf/www.conf /etc/php/8.2/fpm/pool.d/www.conf
 
-# Script de setup
 COPY tools/setup_wp.sh /setup_wp.sh
 RUN chmod +x /setup_wp.sh
 
